@@ -1,0 +1,16 @@
+{
+  "name": "guru-husky-3d-glb-wireframe",
+  "version": "1.0.0",
+  "description": "Procedural 3D Husky with PBR, wireframe, GLB export and physics",
+  "type": "module",
+  "scripts": {
+    "start": "npx http-server . -p 8080 -c-1",
+    "dev": "npx http-server . -p 8080 -c-1 -o"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  },
+  "keywords": ["threejs", "3d", "husky", "glb", "physics"],
+  "author": "FajnGuru",
+  "license": "MIT"
+}
