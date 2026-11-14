@@ -7,6 +7,7 @@ import { updateTriangleStats } from './stats.js';
 import { setupUI } from './ui.js';
 import { startAnimation } from './animation.js';
 import { initPhysics, createCharacterPhysics, stepPhysics } from './physics.js';
+import { initFajnCrewAI } from './fajncrew-ai.js';
 
 const { scene, camera, renderer, controls } = initScene();
 
@@ -21,6 +22,9 @@ function updateStats() {
 updateStats();
 
 setupUI(materials, overlayMeshes, partGroups, huskyRoot, updateStats);
+
+// FajnCrew AI (Mód 10): prompt → Vercel glb-command → povolené UI příkazy. Bez API klíčů v klientovi.
+initFajnCrewAI({ partGroups, materials });
 
 // Physics
 const world = initPhysics();
