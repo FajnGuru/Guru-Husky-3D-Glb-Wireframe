@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-export function startAnimation(clock, controls, renderer, camera, scene, gHead, gGear, gTorso, huskyRoot) {
+export function startAnimation(clock, controls, renderer, camera, scene, gHead, gGear, gTorso, huskyRoot, world, physicsBodies, stepPhysics) {
   const toggleAnim = document.getElementById('toggle-anim');
   const toggleTurntable = document.getElementById('toggle-turntable');
 
@@ -19,6 +19,11 @@ export function startAnimation(clock, controls, renderer, camera, scene, gHead, 
 
     if (toggleTurntable.checked) {
       huskyRoot.rotation.y += 0.008;
+    }
+
+    // Physics step
+    if (world && physicsBodies && stepPhysics) {
+      stepPhysics(world, physicsBodies, clock.getDelta());
     }
 
     controls.update();
