@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Guru Husky 3D - Procedural Mesh & GLB Studio</title>
+  <style>
+    :root {
+      --bg-panel: rgba(18, 22, 31, 0.9);
+      --accent: #2b7de9;
+      --accent-hover: #4692f7;
+      --text: #eef2f7;
+      --muted: #9aa5b5;
+      --border: rgba(255, 255, 255, 0.12);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #0d1017;
+      color: var(--text);
+      overflow: hidden;
+      user-select: none;
+    }
+    #canvas-container { width: 100vw; height: 100vh; display: block; }
+    
+    /* UI Panel */
+    #ui-panel {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      width: 330px;
+      max-height: calc(100vh - 32px);
+      overflow-y: auto;
+      background: var(--bg-panel);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+      z-index: 10;
+    }
+    h1 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .subtitle {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .section-title {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin: 14px 0 8px 0;
+      font-weight: 600;
+    }
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.86rem;
+      padding: 6px 8px;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 8px;
+    }
+    .row label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      flex: 1;
+    }
+    .badge {
+      font-size: 0.72rem;
+      background: rgba(43, 125, 233, 0.22);
+      color: #7ab3ff;
+      padding: 2px 7px;
+      border-radius: 6px;
+      font-variant-numeric: tabular-nums;
+    }
+    button, select {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    button:hover, select:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+    select option {
+      background: #141923;
+      color: var(--text);
+    }
+    .btn-primary {
+      background: var(--accent);
+      border-color: transparent;
+      margin-top: 8px;
+    }
+    .btn-primary:hover {
+      background: var(--accent-hover);
+    }
+    .stats-box {
+      margin-top: 14px;
+      padding: 10px;
+      background: rgba(0, 0, 0, 0.35);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      font-size: 0.8rem;
+      line-height: 1.5;
+    }
+    .stats-box div {
+      display: flex;
+      justify-content: space-between;
+    }
+    .stats-val {
+      font-weight: 700;
+      color: #63e2b7;
+    }
+  </style>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+        "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
+      }
+    }
+  </script>
+</head>
+<body>
+
+  <div id="ui-panel">
+    <h1>
+      <span>Guru Husky 3D</span>
+      <span class="badge" id="total-tris-badge">0 △</span>
+    </h1>
+    <div class="subtitle">Strukturovaný Mesh, Wireframe & PBR GLB generátor</div>
+
+    <div class="section-title">Zobrazení sítě (Trojúhelníky)</div>
+    <div class="control-group">
+      <select id="render-mode">
+        <option value="pbr">1. Čistý PBR Render + Textury</option>
+        <option value="overlay" selected>2. PBR + Wireframe Overlay (Doporučeno)</option>
+        <option value="wireframe">3. Čistý Triangulovaný Wireframe</option>
+      </select>
+      <div class="row">
+        <label><input type="checkbox" id="toggle-anim" checked /> Animace postoje (Idle dech)</label>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="toggle-turntable" /> Otáčet model dokola</label>
+      </div>
+    </div>
+
+    <div class="section-title">Části těla (Podle hustoty detailů)</div>
+    <div class="control-group" id="parts-list">
+      <div class="row">
+        <label><input type="checkbox" data-part="1_Head_Muzzle" checked /> 1. Hlava, čenich a jazyk</label>
+        <span class="badge" id="stat-1_Head_Muzzle">0 △</span>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" data-part="2_Headgear" checked /> 2. Brýle a sluchátka</label>
+        <span class="badge" id="stat-2_Headgear">0 △</span>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" data-part="3_Torso_Jacket" checked /> 3. Trup, tričko a bunda</label>
+        <span class="badge" id="stat-3_Torso_Jacket">0 △</span>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" data-part="4_Paws_Fingers" checked /> 4. Tlapky a prsty (v bok)</label>
+        <span class="badge" id="stat-4_Paws_Fingers">0 △</span>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" data-part="5_Jeans_Tail" checked /> 5. Džíny a huňatý ocas</label>
+        <span class="badge" id="stat-5_Jeans_Tail">0 △</span>
+      </div>
+    </div>
+
+    <div class="section-title">Export modelu</div>
+    <button class="btn-primary" id="btn-export-glb">Stáhnout model (.GLB)</button>
+
+    <div class="stats-box">
+      <div><span>Celkem trojúhelníků:</span> <span class="stats-val" id="stat-tris">0</span></div>
+      <div><span>Celkem vrcholů (Vertices):</span> <span class="stats-val" id="stat-verts">0</span></div>
+      <div><span>PBR Procedurální mapy:</span> <span class="stats-val">5× (Srst, Kůže, Džíny)</span></div>
+    </div>
+  </div>
+
+  <div id="canvas-container"></div>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
