@@ -1,4 +1,3 @@
-import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 
 export function initPhysics() {
@@ -17,39 +16,36 @@ export function initPhysics() {
   return world;
 }
 
+const HALF_H = 0.9;
+
 export function createCharacterPhysics(world, huskyRoot, partGroups) {
   const bodies = [];
 
-  // Simple compound-like: one dynamic body for the whole character (center of mass roughly at torso)
-  const shape = new CANNON.Box(new CANNON.Vec3(0.45, 0.9, 0.35));
+  // Jedno dynamické těleso pro celou postavu. Spodní hrana boxu = chodidla (y=0), postava zůstává vzpřímená.
+  const shape = new CANNON.Box(new CANNON.Vec3(0.45, HALF_H, 0.35));
   const body = new CANNON.Body({
     mass: 8,
     shape,
-    position: new CANNON.Vec3(0, 1.2, 0)
+    fixedRotation: true,
+    position: new CANNON.Vec3(0, HALF_H + 0.3, 0) // spadne z 30 cm na zem
   });
   world.addBody(body);
-  bodies.push({ body, mesh: huskyRoot });
+  // offset = pozice meshe vůči tělesu (kořen postavy má počátek u chodidel)
+  bodies.push({ body, mesh: huskyRoot, offset: new CANNON.Vec3(0, -HALF_H, 0) });
 
-  // Optional: individual bodies for head and paws for more interesting simulation
-  // Head
-  const headShape = new CANNON.Sphere(0.4);
-  const headBody = new CANNON.Body({
-    mass: 1.2,
-    shape: headShape,
-    position: new CANNON.Vec3(0, 1.9, 0)
-  });
-  world.addBody(headBody);
-  bodies.push({ body: headBody, mesh: partGroups['1_Head_Muzzle'] });
-
+  // Pozn.: hlava NEMÁ samostatné dynamické těleso napojené na mesh – dřív padala zvlášť
+  // a její světová pozice se zapisovala do lokální pozice skupiny (hlava mimo tělo).
   return bodies;
 }
 
 export function stepPhysics(world, bodies, dt = 1 / 60) {
-  world.step(dt);
-  bodies.forEach(({ body, mesh }) => {
-    if (mesh) {
-      mesh.position.copy(body.position);
-      mesh.quaternion.copy(body.quaternion);
-    }
+  const d = Number.isFinite(dt) && dt > 0 ? Math.min(dt, 0.1) : 1 / 60;
+  world.step(1 / 60, d, 5);
+  bodies.forEach(({ body, mesh, offset }) => {
+    if (!mesh) return;
+    const p = body.position;
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) return; // nikdy nekopírovat NaN
+    mesh.position.set(p.x + (offset?.x || 0), p.y + (offset?.y || 0), p.z + (offset?.z || 0));
+    // rotaci nekopírujeme (fixedRotation) – otáčení dokola (turntable) tak funguje
   });
 }

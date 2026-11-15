@@ -4,8 +4,9 @@
 // Server (Vercel) zavolá Gemini klíči BOT01–06 a vrátí jen povolené příkazy (whitelist), které tu provedeme přes UI.
 
 export const FAJNCREW_PROD_URL = 'https://fajncrew.vercel.app';
-// Do sloučení FajnCrew PR #42 je route glb-command jen na preview nasazení:
-export const FAJNCREW_DEFAULT_URL = 'https://fajncrew-git-feat-mod10-glb-command-fajnguru.vercel.app';
+export const FAJNCREW_DEFAULT_URL = FAJNCREW_PROD_URL; // FajnCrew PR #42 je na main (b48a63d)
+// Dřívější preview adresa – uloženou hodnotu v localStorage převedeme na produkci.
+const OLD_PREVIEW_URLS = ['https://fajncrew-git-feat-mod10-glb-command-fajnguru.vercel.app'];
 export const GLB_COMMAND_PATH = '/api/ai?route=glb-command';
 export const EDITOR_ID = 'husky-wireframe';
 const TOKEN_KEY = 'fajncrew_editor_token';
@@ -27,18 +28,20 @@ const HTTP_MSG = {
   503: 'FajnCrew teď není nastavený (chybí token nebo Gemini klíč ve Vercel env).',
 };
 
-export function initFajnCrewAI({ partGroups, materials }) {
+export function initFajnCrewAI({ model, updateStats }) {
   const $ = (s) => document.querySelector(s);
   const partCb = (id) => document.querySelector(`#parts-list input[data-part="${id}"]`);
   const fire = (el) => el && el.dispatchEvent(new Event('change', { bubbles: true }));
   const partColors = {}; // id -> '#rrggbb' (jen změněné části)
   const undo = [];
+  const groups = () => model.partGroups;
+  window.addEventListener('husky:model-changed', () => { undo.length = 0; for (const k of Object.keys(partColors)) delete partColors[k]; });
 
   // ---------- Stav ----------
-  function partScale(id) { return partGroups[id]?.userData.fcScale ?? 1; }
+  function partScale(id) { return groups()[id]?.userData.fcScale ?? 1; }
   function getState() {
     const parts = {};
-    for (const id of Object.keys(partGroups)) {
+    for (const id of Object.keys(groups())) {
       const badge = document.getElementById(`stat-${id}`);
       const tris = badge ? Number(badge.textContent.replace(/[^\d]/g, '')) : undefined;
       parts[id] = { visible: !!partCb(id)?.checked, scale: partScale(id), ...(partColors[id] ? { color: partColors[id] } : {}), ...(Number.isFinite(tris) ? { triangles: tris } : {}) };
@@ -50,7 +53,7 @@ export function initFajnCrewAI({ partGroups, materials }) {
   function setPartVisible(id, v) { const cb = partCb(id); if (cb && cb.checked !== v) { cb.checked = v; fire(cb); } }
   function setViewMode(m) { const s = $('#render-mode'); if (s && MODES.includes(m) && s.value !== m) { s.value = m; fire(s); } }
   function setToggle(sel, v) { const cb = $(sel); if (cb && cb.checked !== v) { cb.checked = v; fire(cb); } }
-  function meshesOf(id) { const out = []; partGroups[id]?.traverse((o) => { if (o.isMesh && !o.userData.isOverlay) out.push(o); }); return out; }
+  function meshesOf(id) { const out = []; groups()[id]?.traverse((o) => { if (o.isMesh && !o.userData.isOverlay) out.push(o); }); return out; }
   function setPartColor(id, hex) {
     const meshes = meshesOf(id);
     if (!hex) { // zpět na původní sdílené materiály
@@ -64,7 +67,7 @@ export function initFajnCrewAI({ partGroups, materials }) {
       if (!m.userData.fcMat) {
         if (!clones.has(orig)) {
           const c = orig.clone(); c.map = null; c.needsUpdate = true;
-          materials[`fc_${id}_${orig.uuid}`] = c; // ui.js přepíná wireframe přes Object.values(materials)
+          model.materials[`fc_${id}_${orig.uuid}`] = c; // ui.js přepíná wireframe přes Object.values(materials)
           clones.set(orig, c);
         }
         m.userData.fcMat = clones.get(orig);
@@ -76,8 +79,8 @@ export function initFajnCrewAI({ partGroups, materials }) {
     partColors[id] = hex;
   }
   function setPartScale(id, s) {
-    const g = partGroups[id]; if (!g) return;
-    const meshes = meshesOf(id).filter((m) => m.parent === g);
+    const g = groups()[id]; if (!g) return;
+    const meshes = g.isMesh ? [g] : meshesOf(id).filter((m) => m.parent === g);
     if (!g.userData.fcCenter) {
       const box = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
       meshes.forEach((m) => { ['x', 'y', 'z'].forEach((a, i) => { box.min[i] = Math.min(box.min[i], m.position[a]); box.max[i] = Math.max(box.max[i], m.position[a]); }); });
@@ -144,6 +147,7 @@ export function initFajnCrewAI({ partGroups, materials }) {
 
   const status = (t, err) => { const s = $('#fc-status'); s.textContent = t; s.style.color = err ? '#ff8a8a' : 'var(--muted)'; };
   const urlIn = $('#fc-url');
+  if (OLD_PREVIEW_URLS.includes(store.get(URL_KEY).replace(/\/+$/, ''))) store.set(URL_KEY, '');
   urlIn.value = store.get(URL_KEY) || FAJNCREW_DEFAULT_URL;
   urlIn.addEventListener('change', () => { const v = urlIn.value.trim().replace(/\/+$/, ''); store.set(URL_KEY, /^https:\/\//.test(v) && v !== FAJNCREW_DEFAULT_URL ? v : ''); });
   const showToken = () => { $('#fc-token-info').textContent = store.get(TOKEN_KEY) ? `Token uložen (${mask(store.get(TOKEN_KEY))})` : 'Token není uložen.'; };

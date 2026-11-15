@@ -4,10 +4,12 @@ import { createTextures } from './textures.js';
 import { createMaterials } from './materials.js';
 import { createCharacter } from './character.js';
 import { updateTriangleStats } from './stats.js';
-import { setupUI } from './ui.js';
+import { setupUI, renderPartsList, applyRenderMode } from './ui.js';
 import { startAnimation } from './animation.js';
 import { initPhysics, createCharacterPhysics, stepPhysics } from './physics.js';
 import { initFajnCrewAI } from './fajncrew-ai.js';
+import { model, setModel, PROCEDURAL_LABELS } from './model-state.js';
+import { setupGlbImport } from './glb-import.js';
 
 const { scene, camera, renderer, controls } = initScene();
 
@@ -16,15 +18,24 @@ const { materials, wireframeOverlayMat } = createMaterials(textures);
 
 const { huskyRoot, partGroups, overlayMeshes, gHead, gGear, gTorso } = createCharacter(scene, materials, wireframeOverlayMat);
 
+// Aktivní model = procedurální Husky (import GLB ho umí vyměnit)
+const procedural = { root: huskyRoot, partGroups, overlayMeshes, materials };
+setModel({ kind: 'procedural', name: 'Guru Husky (procedurální)', ...procedural, labels: { ...PROCEDURAL_LABELS } });
+
 function updateStats() {
-  updateTriangleStats(partGroups);
+  updateTriangleStats(model.partGroups);
 }
+
+renderPartsList();
+setupUI(updateStats);
+applyRenderMode();
 updateStats();
 
-setupUI(materials, overlayMeshes, partGroups, huskyRoot, updateStats);
+// Import vlastního GLB (tlačítko + drag&drop)
+setupGlbImport({ scene, camera, controls, procedural, wireframeOverlayMat, updateStats });
 
 // FajnCrew AI (Mód 10): prompt → Vercel glb-command → povolené UI příkazy. Bez API klíčů v klientovi.
-initFajnCrewAI({ partGroups, materials });
+initFajnCrewAI({ model, updateStats });
 
 // Physics
 const world = initPhysics();
