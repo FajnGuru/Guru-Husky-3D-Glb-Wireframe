@@ -1,12 +1,16 @@
-export function updateTriangleStats(partGroups) {
+import { model } from './model-state.js';
+
+export function updateTriangleStats(partGroups = model.partGroups) {
   let totalTris = 0;
   let totalVerts = 0;
+  const counted = new Set();
 
   Object.entries(partGroups).forEach(([key, group]) => {
     let partTris = 0;
     if (group.visible) {
-      group.traverse(obj => {
-        if (obj.isMesh && !obj.userData.isOverlay) {
+      group.traverseVisible(obj => {
+        if (obj.isMesh && !obj.userData.isOverlay && !counted.has(obj)) {
+          counted.add(obj);
           const geo = obj.geometry;
           const tris = geo.index ? geo.index.count / 3 : geo.attributes.position.count / 3;
           const verts = geo.attributes.position.count;
