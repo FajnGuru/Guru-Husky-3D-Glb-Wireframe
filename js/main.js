@@ -10,6 +10,8 @@ import { initPhysics, createCharacterPhysics, stepPhysics } from './physics.js';
 import { initFajnCrewAI } from './fajncrew-ai.js';
 import { model, setModel, PROCEDURAL_LABELS } from './model-state.js';
 import { setupGlbImport } from './glb-import.js';
+import { createRegionEngine } from './regions.js';
+import { setupRegionsUI } from './regions-ui.js';
 
 const { scene, camera, renderer, controls } = initScene();
 
@@ -34,8 +36,14 @@ updateStats();
 // Import vlastního GLB (tlačítko + drag&drop)
 setupGlbImport({ scene, camera, controls, procedural, wireframeOverlayMat, updateStats });
 
+// Husky F2: oblasti pro editaci polygonů (procedurální i importovaný GLB)
+const regions = createRegionEngine();
+regions.rebuild();
+
 // FajnCrew AI (Mód 10): prompt → Vercel glb-command → povolené UI příkazy. Bez API klíčů v klientovi.
-initFajnCrewAI({ model, updateStats });
+const ai = initFajnCrewAI({ model, updateStats, regions });
+setupRegionsUI({ regions, scene, camera, renderer, ai });
+window.huskyRegions = regions;
 
 // Physics
 const world = initPhysics();

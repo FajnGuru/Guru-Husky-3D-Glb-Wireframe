@@ -28,7 +28,7 @@ const HTTP_MSG = {
   503: 'FajnCrew teď není nastavený (chybí token nebo Gemini klíč ve Vercel env).',
 };
 
-export function initFajnCrewAI({ model, updateStats }) {
+export function initFajnCrewAI({ model, updateStats, regions }) {
   const $ = (s) => document.querySelector(s);
   const partCb = (id) => document.querySelector(`#parts-list input[data-part="${id}"]`);
   const fire = (el) => el && el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -46,7 +46,7 @@ export function initFajnCrewAI({ model, updateStats }) {
       const tris = badge ? Number(badge.textContent.replace(/[^\d]/g, '')) : undefined;
       parts[id] = { visible: !!partCb(id)?.checked, scale: partScale(id), ...(partColors[id] ? { color: partColors[id] } : {}), ...(Number.isFinite(tris) ? { triangles: tris } : {}) };
     }
-    return { parts, mode: $('#render-mode')?.value, idleAnimation: !!$('#toggle-anim')?.checked, autoRotate: !!$('#toggle-turntable')?.checked };
+    return { parts, ...(regions ? { regions: regions.list() } : {}), mode: $('#render-mode')?.value, idleAnimation: !!$('#toggle-anim')?.checked, autoRotate: !!$('#toggle-turntable')?.checked };
   }
 
   // ---------- Operace (přes existující UI, aby zůstalo vše konzistentní) ----------
@@ -106,6 +106,9 @@ export function initFajnCrewAI({ model, updateStats }) {
       case 'setPartColor': return HEX_RE.test(c.color || '') && setPartColor(c.part, c.color);
       case 'setPartScale': return Number.isFinite(c.scale) && setPartScale(c.part, Math.min(3, Math.max(0.3, c.scale)));
       case 'exportGlb': return exportGlb();
+      case 'scaleRegion': case 'moveRegion': case 'rotateRegion': case 'inflateRegion': case 'smoothRegion': case 'setRegionColor':
+        if (!regions) throw new Error('oblasti nejsou k dispozici');
+        return regions.apply(c);
       default: throw new Error('neznámý příkaz ' + c.op);
     }
   }
@@ -158,9 +161,10 @@ export function initFajnCrewAI({ model, updateStats }) {
   wrap.addEventListener('keydown', (e) => e.stopPropagation());
 
   $('#fc-undo').addEventListener('click', () => {
-    const snap = undo.pop();
-    if (!snap) return status('Není co vrátit.');
-    restore(snap); status(`Vráceno (zbývá ${undo.length}).`);
+    const entry = undo.pop();
+    if (!entry) return status('Není co vrátit.');
+    if (entry.batch && regions) regions.restore(entry.batch); // vrcholy, normály, barvy oblastí
+    restore(entry.state); status(`Vráceno (zbývá ${undo.length}).`);
   });
 
   let busy = false;
@@ -183,9 +187,13 @@ export function initFajnCrewAI({ model, updateStats }) {
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(`${HTTP_MSG[r.status] || 'FajnCrew chyba HTTP ' + r.status}${data.error ? ' (' + String(data.error).slice(0, 200) + ')' : ''}`);
       if (!Array.isArray(data.commands)) throw new Error('FajnCrew vrátil neplatnou odpověď.');
-      if (data.commands.length) { undo.push(getState()); if (undo.length > MAX_UNDO) undo.shift(); }
       const done = []; const failed = [];
-      for (const c of data.commands) { try { applyCommand(c); done.push(c.op); } catch (e) { failed.push(String(e.message || e)); } }
+      if (data.commands.length) {
+        const state = getState();
+        regions?.begin();
+        for (const c of data.commands) { try { applyCommand(c); done.push(c.op); } catch (e) { failed.push(String(e.message || e)); } }
+        pushUndo({ state, batch: regions?.end() || null });
+      }
       const warn = [...(data.warnings || []), ...failed];
       status(`${data.explanation || 'Hotovo.'}\n✓ ${done.length} příkazů${data.model ? ` · ${data.model}` : ''}${data.botId ? ` · ${data.botId}` : ''}${warn.length ? '\n⚠ ' + warn.slice(0, 4).join('; ') : ''}`);
     } catch (e) {
@@ -195,7 +203,8 @@ export function initFajnCrewAI({ model, updateStats }) {
   $('#fc-send').addEventListener('click', send);
   $('#fc-prompt').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) send(); });
 
-  const api = { getState, applyCommand, restore, undo: () => $('#fc-undo').click() };
+  function pushUndo(entry) { undo.push(entry); if (undo.length > MAX_UNDO) undo.shift(); }
+  const api = { getState, applyCommand, restore, pushUndo, undo: () => $('#fc-undo').click() };
   window.fajnCrewAI = api;
   return api;
 }
