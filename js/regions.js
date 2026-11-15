@@ -125,8 +125,8 @@ export function createRegionEngine() {
   }
 
   // ---------- historie (pro ↶ Zpět) ----------
-  function begin() { batch = { geo: new Map(), mat: new Map() }; return batch; }
-  function end() { const b = batch; batch = null; return b && (b.geo.size || b.mat.size) ? b : null; }
+  function begin() { batch = { geo: new Map(), mat: new Map(), vis: new Map() }; return batch; }
+  function end() { const b = batch; batch = null; return b && (b.geo.size || b.mat.size || b.vis.size) ? b : null; }
   function ownGeometry(mesh) {
     // sdílená geometrie (instancing v cizím GLB) → vlastní kopie, overlay ji následuje
     const g = mesh.geometry;
@@ -139,7 +139,7 @@ export function createRegionEngine() {
   function remember(mesh) {
     if (!batch || batch.geo.has(mesh)) { if (!batch) ownGeometry(mesh); return; }
     const g0 = mesh.geometry;
-    batch.geo.set(mesh, { geometry: g0, pos: g0.attributes.position.array.slice(), nrm: g0.attributes.normal ? g0.attributes.normal.array.slice() : null });
+    batch.geo.set(mesh, { geometry: g0, pos: g0.attributes.position.array.slice(), nrm: g0.attributes.normal ? g0.attributes.normal.array.slice() : null, idx: g0.index ? g0.index.array.slice() : null });
     ownGeometry(mesh);
   }
   function restore(b) {
@@ -149,10 +149,17 @@ export function createRegionEngine() {
       const g = mesh.geometry;
       g.attributes.position.array.set(s.pos); g.attributes.position.needsUpdate = true;
       if (s.nrm && g.attributes.normal) { g.attributes.normal.array.set(s.nrm); g.attributes.normal.needsUpdate = true; }
+      if (s.idx && g.index && g.index.array.length !== s.idx.length) g.setIndex(new THREE.BufferAttribute(s.idx.slice(), 1));
+      else if (s.idx && g.index) { g.index.array.set(s.idx); g.index.needsUpdate = true; }
       g.computeBoundingSphere(); g.computeBoundingBox();
     }
     for (const [mesh, mat] of b.mat) mesh.material = mat;
+    for (const [mesh, vis] of b.vis) mesh.visible = vis;
+    changed();
   }
+  function changed() { window.dispatchEvent(new CustomEvent('husky:geometry-changed')); }
+  /** Je oblast viditelná? (pojmenovaná: všechny meshe viditelné) */
+  function isVisible(id) { const r = regions.get(id); if (!r) return false; if (r.sphere) return !r.hidden; return r.meshes.every((m) => m.visible); }
 
   // ---------- normály (zachová ostré hrany > 60°) ----------
   function recomputeNormals(g) {
@@ -276,6 +283,44 @@ export function createRegionEngine() {
     },
   };
 
+  // Skrytí oblasti: pojmenovaná oblast = mesh.visible (nic se nemaže, overlay se skryje s rodičem);
+  // koule „vyber“ = z indexu se vyjmou trojúhelníky uvnitř koule (plný index zůstává v userData → jde vrátit).
+  ops.setRegionVisible = ({ region, visible }) => {
+    const v = visible === true || visible === 'true';
+    const r = getRegion(region);
+    if (!r.sphere) {
+      for (const m of r.meshes) { if (batch && !batch.vis.has(m)) batch.vis.set(m, m.visible); m.visible = v; }
+    } else {
+      const { center, radius: R, items } = affected(r, 0);
+      const t = new THREE.Vector3();
+      for (const { mesh, M } of items) {
+        const g = mesh.geometry;
+        if (!g.index) { // neindexovaná geometrie → celý mesh, pokud je většinou uvnitř
+          const p = g.attributes.position; let inside = 0;
+          for (let i = 0; i < p.count; i++) if (t.fromBufferAttribute(p, i).applyMatrix4(M).distanceTo(center) <= R) inside++;
+          if (inside / p.count > 0.5) { if (batch && !batch.vis.has(mesh)) batch.vis.set(mesh, mesh.visible); mesh.visible = v; }
+          continue;
+        }
+        remember(mesh);
+        const g2 = mesh.geometry; const p = g2.attributes.position;
+        if (!g2.userData.fcFullIndex) g2.userData.fcFullIndex = g2.index.array.slice();
+        const full = g2.userData.fcFullIndex; const cur = new Set();
+        const ia = g2.index.array; for (let f = 0; f < ia.length; f += 3) cur.add(`${ia[f]},${ia[f + 1]},${ia[f + 2]}`);
+        const inSphere = (i) => t.fromBufferAttribute(p, i).applyMatrix4(M).distanceTo(center) <= R;
+        const out = [];
+        for (let f = 0; f < full.length; f += 3) {
+          const a = full[f], b = full[f + 1], c = full[f + 2];
+          const inside = inSphere(a) && inSphere(b) && inSphere(c);
+          const present = cur.has(`${a},${b},${c}`);
+          if (inside ? v : present) out.push(a, b, c);
+        }
+        g2.setIndex(out);
+      }
+      r.hidden = !v;
+    }
+    changed();
+  };
+
   function apply(cmd) { const fn = ops[cmd.op]; if (!fn) throw new Error('neznámý příkaz ' + cmd.op); fn(cmd); }
 
   /** Záložní výběr: koule kolem bodu (v prostoru kořene) → oblast „vyber“. */
@@ -284,5 +329,5 @@ export function createRegionEngine() {
   }
   function worldToRoot(pWorld) { model.root.updateMatrixWorld(true); return pWorld.clone().applyMatrix4(new THREE.Matrix4().copy(model.root.matrixWorld).invert()); }
 
-  return { rebuild, list, has, apply, begin, end, restore, setSphere, worldToRoot, regionSphere: (id) => regionSphere(getRegion(id)), get heightRef() { return heightRef; } };
+  return { rebuild, list, has, isVisible, apply, begin, end, restore, setSphere, worldToRoot, regionSphere: (id) => regionSphere(getRegion(id)), get heightRef() { return heightRef; } };
 }

@@ -44,6 +44,7 @@ regions.rebuild();
 const ai = initFajnCrewAI({ model, updateStats, regions });
 setupRegionsUI({ regions, scene, camera, renderer, ai });
 window.huskyRegions = regions;
+window.addEventListener('husky:geometry-changed', () => updateStats());
 
 // Physics
 const world = initPhysics();

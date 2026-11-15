@@ -8,7 +8,7 @@ export function updateTriangleStats(partGroups = model.partGroups) {
   Object.entries(partGroups).forEach(([key, group]) => {
     let partTris = 0;
     if (group.visible) {
-      group.traverse(obj => {
+      group.traverseVisible(obj => {
         if (obj.isMesh && !obj.userData.isOverlay && !counted.has(obj)) {
           counted.add(obj);
           const geo = obj.geometry;

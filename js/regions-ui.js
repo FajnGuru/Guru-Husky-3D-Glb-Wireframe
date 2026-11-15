@@ -12,6 +12,7 @@ export function setupRegionsUI({ regions, scene, camera, renderer, ai }) {
     <div class="section-title">Oblasti (editace polygonů)</div>
     <div class="control-group" style="gap:6px">
       <select id="rg-region"></select>
+      <div style="${ROW}"><label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input id="rg-visible" type="checkbox" checked> Viditelná</label></div>
       <div style="${ROW}"><span style="width:84px">Měřítko</span><input id="rg-scale" type="range" min="0.3" max="3" step="0.05" value="1" style="${INP}"><b id="rg-scale-v">1</b></div>
       <div style="${ROW}"><span style="width:84px">Posun X</span><input id="rg-dx" type="range" min="-0.2" max="0.2" step="0.005" value="0" style="${INP}"><b id="rg-dx-v">0</b></div>
       <div style="${ROW}"><span style="width:84px">Posun Y</span><input id="rg-dy" type="range" min="-0.2" max="0.2" step="0.005" value="0" style="${INP}"><b id="rg-dy-v">0</b></div>
@@ -39,7 +40,20 @@ export function setupRegionsUI({ regions, scene, camera, renderer, ai }) {
     sel.textContent = '';
     for (const r of regions.list()) { const o = document.createElement('option'); o.value = r.id; o.textContent = `${r.label} (${r.id})`; sel.appendChild(o); }
     if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
+    syncVisible?.();
   }
+  function syncVisible() { const id = $('rg-region').value; $('rg-visible').checked = id ? regions.isVisible(id) : true; }
+  $('rg-region').addEventListener('change', syncVisible);
+  $('rg-visible').addEventListener('change', () => {
+    const region = $('rg-region').value; if (!region) return;
+    const state = ai?.getState();
+    regions.begin();
+    try { regions.apply({ op: 'setRegionVisible', region, visible: $('rg-visible').checked }); } catch (e) { status(String(e.message || e)); }
+    const batch = regions.end();
+    if (batch && ai) ai.pushUndo({ state, batch });
+    status(`${$('rg-visible').checked ? '✓ zobrazeno' : '✓ skryto'}: ${region} (↶ Zpět v sekci FajnCrew AI)`);
+  });
+  window.addEventListener('husky:geometry-changed', syncVisible);
   function resetSliders() {
     const def = { scale: 1, dx: 0, dy: 0, dz: 0, deg: 0, inflate: 0, smooth: 0 };
     for (const [k, v] of Object.entries(def)) { $('rg-' + k).value = v; $(`rg-${k}-v`).textContent = v; }
