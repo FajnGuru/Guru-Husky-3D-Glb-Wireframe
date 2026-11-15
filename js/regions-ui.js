@@ -24,6 +24,16 @@ export function setupRegionsUI({ regions, scene, camera, renderer, ai }) {
       <div style="${ROW}"><label style="width:84px;display:flex;gap:4px;align-items:center"><input id="rg-color-on" type="checkbox"> Barva</label><input id="rg-color" type="color" value="#c68b59" style="${INP};height:26px;padding:0;border:none;background:none"></div>
       <button class="btn-primary" id="rg-apply" style="margin-top:2px">Použít na oblast</button>
       <div style="${ROW}"><button id="rg-pick" style="padding:6px;width:auto;white-space:nowrap">Výběr kliknutím (koule)</button><input id="rg-radius" type="range" min="0.02" max="0.4" step="0.01" value="0.08" title="poloměr (× výška modelu)" style="${INP}"></div>
+ <details id="rg-gen" style="font-size:.8rem;color:var(--muted)">
+        <summary style="cursor:pointer">Generovat z oblasti (např. paže z rukávu)</summary>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+          <div style="${ROW}"><span style="width:84px">Zdroj</span><span id="rg-gen-src" style="${INP};color:var(--text)">— vybraná oblast —</span></div>
+          <div style="${ROW}"><span style="width:84px">Nová oblast</span><input id="rg-gen-target" placeholder="paze_L" style="${INP};padding:6px;border-radius:6px;border:1px solid var(--border);background:rgba(0,0,0,.35);color:var(--text)"></div>
+          <div style="${ROW}"><span style="width:84px">Napojit na</span><select id="rg-gen-attach" style="${INP};padding:4px"></select></div>
+          <div style="${ROW}"><span style="width:84px">Tloušťka</span><input id="rg-gen-th" type="range" min="0.5" max="1.2" step="0.05" value="0.85" style="${INP}"><b id="rg-gen-th-v">0.85</b></div>
+          <button id="rg-gen-go" style="padding:8px">Generovat</button>
+        </div>
+      </details>
       <div id="rg-status" style="font-size:.75rem;color:var(--muted);min-height:1em"></div>
     </div>`;
   const anchor = document.getElementById('fajncrew-ai') || [...document.querySelectorAll('#ui-panel .section-title')].find((e) => /export/i.test(e.textContent));
@@ -41,6 +51,7 @@ export function setupRegionsUI({ regions, scene, camera, renderer, ai }) {
     for (const r of regions.list()) { const o = document.createElement('option'); o.value = r.id; o.textContent = `${r.label} (${r.id})`; sel.appendChild(o); }
     if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
     syncVisible?.();
+    syncGen?.();
   }
   function syncVisible() { const id = $('rg-region').value; $('rg-visible').checked = id ? regions.isVisible(id) : true; }
   $('rg-region').addEventListener('change', syncVisible);
@@ -54,6 +65,29 @@ export function setupRegionsUI({ regions, scene, camera, renderer, ai }) {
     status(`${$('rg-visible').checked ? '✓ zobrazeno' : '✓ skryto'}: ${region} (↶ Zpět v sekci FajnCrew AI)`);
   });
   window.addEventListener('husky:geometry-changed', syncVisible);
+  // ---------- generování ----------
+  const suggest = (id) => { const m = /^(.*?)(_[LP])?$/.exec(id || ''); const base = { rukav: 'paze', nohavice: 'noha', ocas: 'ocas_novy' }[m[1]] || (m[1] + '_kopie'); return base.toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/^[^a-z]+/, 'x').slice(0, 20) + (m[2] || ''); };
+  const attachGuess = (id) => { const m = /^(rukav|nohavice)(_[LP])$/.exec(id || ''); return m ? (m[1] === 'rukav' ? 'tlapa' : 'chodidlo') + m[2] : ''; };
+  function syncGen() {
+    const id = $('rg-region').value; $('rg-gen-src').textContent = id || '—';
+    $('rg-gen-target').value = suggest(id);
+    const sel = $('rg-gen-attach'); const want = attachGuess(id); sel.textContent = '';
+    const none = document.createElement('option'); none.value = ''; none.textContent = '— nenapojovat —'; sel.appendChild(none);
+    for (const r of regions.list()) { if (r.id === id) continue; const o = document.createElement('option'); o.value = r.id; o.textContent = r.id; sel.appendChild(o); }
+    sel.value = [...sel.options].some((o) => o.value === want) ? want : '';
+  }
+  $('rg-region').addEventListener('change', syncGen);
+  $('rg-gen-th').addEventListener('input', () => { $('rg-gen-th-v').textContent = $('rg-gen-th').value; });
+  $('rg-gen-go').addEventListener('click', () => {
+    const source = $('rg-region').value; const target = $('rg-gen-target').value.trim();
+    const cmd = { op: 'generateFromRegion', source, target, thickness: Number($('rg-gen-th').value), ...($('rg-gen-attach').value ? { attachTo: $('rg-gen-attach').value } : {}) };
+    const state = ai?.getState();
+    regions.begin();
+    try { regions.apply(cmd); status(`✓ vygenerováno: ${target} z ${source}${cmd.attachTo ? ' → ' + cmd.attachTo : ''} (↶ Zpět v sekci FajnCrew AI)`); } catch (e) { status(String(e.message || e)); }
+    const batch = regions.end();
+    if (batch && ai) ai.pushUndo({ state, batch });
+  });
+  window.addEventListener('husky:regions-changed', () => fillList());
   function resetSliders() {
     const def = { scale: 1, dx: 0, dy: 0, dz: 0, deg: 0, inflate: 0, smooth: 0 };
     for (const [k, v] of Object.entries(def)) { $('rg-' + k).value = v; $(`rg-${k}-v`).textContent = v; }

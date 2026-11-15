@@ -106,7 +106,7 @@ export function initFajnCrewAI({ model, updateStats, regions }) {
       case 'setPartColor': return HEX_RE.test(c.color || '') && setPartColor(c.part, c.color);
       case 'setPartScale': return Number.isFinite(c.scale) && setPartScale(c.part, Math.min(3, Math.max(0.3, c.scale)));
       case 'exportGlb': return exportGlb();
-      case 'scaleRegion': case 'moveRegion': case 'rotateRegion': case 'inflateRegion': case 'smoothRegion': case 'setRegionColor': case 'setRegionVisible':
+      case 'scaleRegion': case 'moveRegion': case 'rotateRegion': case 'inflateRegion': case 'smoothRegion': case 'setRegionColor': case 'setRegionVisible': case 'generateFromRegion':
         if (!regions) throw new Error('oblasti nejsou k dispozici');
         return regions.apply(c);
       default: throw new Error('neznámý příkaz ' + c.op);
